@@ -1,110 +1,103 @@
 import asyncio
 import aiohttp
-import argparse
 import logging
-import sys
 import os
 
-from urllib.parse import urlsplit
 from tqdm import tqdm
 
-logger = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
-class MyError(Exception):
-    def __init__(self, args, kwargs):
-        self.args = args
-        self.kwargs = kwargs
+class ClosedRange:
+    def __init__(self, begin, end):
+        self.begin = begin
+        self.end = end
+
+    def __iter__(self):
+        yield self.begin
+        yield self.end
+
+    def __repr__(self):
+        return '{0}.__class__.__name__({0.begin}, {0.end})'.format(self)
+
+    def __len__(self):
+        return self.end - self.begin + 1
 
 
-def save_args_into_exception(func):
-    async def wrapper(*args, **kwargs):
-        try:
-            return await func(*args, **kwargs)
-        except Exception as exc:
-            raise MyError(args, kwargs) from exc
-    return wrapper
+class Download:
+    def __init__(self, url, output, num_blocks, max_retries):
+        self.url = url
+        self.output = output
+        self.num_blocks = num_blocks
+        self.max_retries = max_retries
+        loop = asyncio.get_event_loop()
+        self.session = aiohttp.ClientSession(loop=loop)
 
+    async def get_download_size(self):
+        async with self.session.head(self.url) as response:
+            response.raise_for_status()
+            return int(response.headers['Content-Length'])
 
-@save_args_into_exception
-async def download_block(session, url, f, start, end, conn_id, bar):
-    logger.debug('connection %d: %d -> %d', conn_id, start, end)
-    header = {'Range': 'bytes={}-{}'.format(start, end)}
-    async with session.get(url, headers=header) as response:
-        response.raise_for_status()
-        async for chunk in response.content.iter_chunked(1024):
-            # Be sure there's no 'await' between next two lines!
-            f.seek(start)
-            f.write(chunk)
-            start += len(chunk)
-            bar.update(len(chunk))
-    logger.info('connection %d done', conn_id)
-
-
-async def get_download_size(session, url):
-    async with session.head(url) as response:
-        return int(response.headers['Content-Length'])
-
-
-async def main(url, output, num_connections):
-    with open(output, 'wb') as f, aiohttp.ClientSession() as session:
-        size = await get_download_size(session, url)
-        if num_connections > size:
-            logger.warn(
-                'num_connections(%d) > file size(%d)! Using one.',
-                num_connections, size
-            )
-            num_connections = 1
-        # pre-allocate file
-        os.posix_fallocate(f.fileno(), 0, size)
-        with tqdm(
-            desc=output, total=size, unit='B',
-            unit_scale=True, unit_divisor=1024
-        ) as bar:
-            part_len, remain = divmod(size, num_connections)
-            tasks = [
-                download_block(
-                    session, url, f,
-                    i * part_len, (i + 1) * part_len - 1, i, bar
-                ) for i in range(num_connections - 1)
+    async def split(self):
+        part_len, remain = divmod(self.size, self.num_blocks)
+        return [
+                ClosedRange(
+                    begin=i * part_len,
+                    end=(i + 1) * part_len - 1
+                ) for i in range(self.num_blocks - 1)
             ] + [
-                download_block(
-                    session, url, f, (num_connections - 1) * part_len,
-                    size - 1, num_connections - 1, bar
+                ClosedRange(
+                    begin=(self.num_blocks - 1) * part_len,
+                    end=self.size - 1
                 )
             ]
 
-            while tasks:
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                failed = [i for i in results if isinstance(i, MyError)]
-                if failed:
-                    logger.info('%d connections failed, retrying', len(failed))
-                tasks = [download_block(*i.args) for i in failed]
+    async def download_block(self, id, tried):
+        header = {'Range': 'bytes={}-{}'.format(*self.blocks[id])}
+        try:
+            async with self.session.get(self.url, headers=header) as response:
+                response.raise_for_status()
+                async for chunk in response.content.iter_chunked(1024):
+                    # Be sure that there's no 'await' between next two lines!
+                    self.output.seek(self.blocks[id].begin)
+                    self.output.write(chunk)
+                    self.blocks[id].begin += len(chunk)
+                    self.tqdm.update(len(chunk))
+            LOGGER.debug('block %d: %r done', id, self.blocks[id])
+        except Exception as exc:
+            try:
+                msg = exc.args[0]
+            except IndexError:
+                msg = exc.__class__.__name__
+            LOGGER.warning(
+                'block %d failed: %s, retrying %d/%d',
+                msg, tried, self.max_retries
+            )
+            return await self.download_block(id, tried + 1)
 
+    def close(self):
+        self.session.close()
+        self.output.close()
+        self.tqdm.close()
 
-if __name__ == '__main__':
-    ap = argparse.ArgumentParser(description='async downloader')
-    ap.add_argument('url', help='URL to download')
-    ap.add_argument('--output', '-o', required=False, help='output file')
-    ap.add_argument(
-        '--num-connections', '-n', type=int, required=False,
-        default=16, help='number of connections'
-    )
-    ap.add_argument(
-        '-v', '--verbose', action='count', dest='level',
-        default=2, help='Verbose logging (repeat for more verbose)')
-    ap.add_argument(
-        '-q', '--quiet', action='store_const', const=0, dest='level',
-        default=2, help='Only log errors')
-    args = ap.parse_args()
-    levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
-    logging.basicConfig(level=levels[min(args.level, len(levels)-1)])
+    async def download(self):
+        self.size = await self.get_download_size()
+        if self.num_blocks > self.size:
+            LOGGER.error(
+                'Too many blocks(%d > file size %d)!',
+                self.num_blocks, self.size
+            )
+            self.close()
+            return
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(
-        main(
-            url=args.url,
-            output=args.output or os.path.basename(urlsplit(args.url).path),
-            num_connections=args.num_connections
+        # pre-allocate file
+        os.posix_fallocate(self.output.fileno(), 0, self.size)
+        self.blocks = await self.split()
+        self.tqdm = tqdm(
+            total=self.size, unit='B',
+            unit_scale=True, unit_divisor=1024
         )
-    )
+        await asyncio.wait(
+            [self.download_block(i, 0) for i in range(self.num_blocks)]
+        )
+        self.close()
