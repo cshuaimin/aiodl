@@ -78,7 +78,10 @@ class Download:
     def close(self):
         self.session.close()
         self.output.close()
-        self.tqdm.close()
+        try:
+            self.tqdm.close()
+        except AttributeError:
+            pass
 
     async def download(self):
         self.size = await self.get_download_size()
