@@ -6,6 +6,7 @@ import os
 from urllib.parse import urlsplit
 from aget import Download
 
+LOGGER = logging.getLogger(__name__)
 
 def main():
     ap = argparse.ArgumentParser(
@@ -35,11 +36,14 @@ def main():
     levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
     logging.basicConfig(level=levels[min(args.level, len(levels)-1)])
 
+    output = args.output or open(
+        os.path.basename(urlsplit(args.url).path),
+        'wb'
+    )
+    LOGGER.info('saving to %s ...', output.name)
     download = Download(
         url=args.url,
-        output=args.output or open(
-            os.path.basename(urlsplit(args.url).path), 'wb'
-        ),
+        output=output,
         num_blocks=args.num_blocks,
         max_retries=args.max_retries
     )

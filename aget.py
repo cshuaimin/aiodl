@@ -17,8 +17,8 @@ class ClosedRange:
         yield self.begin
         yield self.end
 
-    def __repr__(self):
-        return '{0}.__class__.__name__({0.begin}, {0.end})'.format(self)
+    def __str__(self):
+        return '[{0.begin}, {0.end}]'.format(self)
 
     def __len__(self):
         return self.end - self.begin + 1
@@ -63,7 +63,7 @@ class Download:
                     self.output.write(chunk)
                     self.blocks[id].begin += len(chunk)
                     self.tqdm.update(len(chunk))
-            LOGGER.debug('block %d: %r done', id, self.blocks[id])
+            LOGGER.debug('block %d: %s done', id, self.blocks[id])
         except Exception as exc:
             try:
                 msg = exc.args[0]
