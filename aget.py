@@ -1,11 +1,17 @@
 import asyncio
 import aiohttp
 import logging
+import functools
 import os
 
 from tqdm import tqdm
+from aiohttp.client_exceptions import ClientConnectorError
 
 LOGGER = logging.getLogger(__name__)
+
+
+class MaxRetryReachedError(Exception):
+    'The maximum number of retries has been reached!'
 
 
 class ClosedRange:
@@ -25,82 +31,101 @@ class ClosedRange:
 
 
 class Download:
-    def __init__(self, url, output, num_blocks, max_retries):
+    def __init__(self, url, output_fname, num_blocks, blocks, max_retries):
         self.url = url
-        self.output = output
+        self.output_fname = output_fname
         self.num_blocks = num_blocks
         self.max_retries = max_retries
-        loop = asyncio.get_event_loop()
-        self.session = aiohttp.ClientSession(loop=loop)
+        self.blocks = blocks
 
+    def retry(coro_func):
+        @functools.wraps(coro_func)
+        async def wrapper(self, *args, **kwargs):
+            tried = 0
+            while True:
+                tried += 1
+                try:
+                    return await coro_func(self, *args, **kwargs)
+                except ClientConnectorError as exc:
+                    if tried <= self.max_retries:
+                        LOGGER.warning(
+                            '%s() failed: %s, retrying %d/%d',
+                            coro_func.__name__, exc.strerror, tried, self.max_retries
+                        )
+                    else:
+                        LOGGER.error(
+                            '%s() failed: %s, max retry exceeded!',
+                            coro_func.__name__, exc.strerror
+                        )
+                        raise MaxRetryReachedError from exc
+        return wrapper
+
+    @retry
     async def get_download_size(self):
         async with self.session.head(self.url) as response:
             response.raise_for_status()
             return int(response.headers['Content-Length'])
 
-    async def split(self):
+    def split(self):
         part_len, remain = divmod(self.size, self.num_blocks)
-        return [
-                ClosedRange(
+        blocks = {
+                i: ClosedRange(
                     begin=i * part_len,
                     end=(i + 1) * part_len - 1
                 ) for i in range(self.num_blocks - 1)
-            ] + [
-                ClosedRange(
-                    begin=(self.num_blocks - 1) * part_len,
-                    end=self.size - 1
-                )
-            ]
+            }
+        blocks[self.num_blocks - 1] = ClosedRange(
+            begin=(self.num_blocks - 1) * part_len,
+            end=self.size - 1
+        )
+        return blocks
 
+    @retry
     async def download_block(self, id, tried):
         header = {'Range': 'bytes={}-{}'.format(*self.blocks[id])}
-        try:
-            async with self.session.get(self.url, headers=header) as response:
-                response.raise_for_status()
-                async for chunk in response.content.iter_chunked(1024):
-                    # Be sure that there's no 'await' between next two lines!
-                    self.output.seek(self.blocks[id].begin)
-                    self.output.write(chunk)
-                    self.blocks[id].begin += len(chunk)
-                    self.tqdm.update(len(chunk))
-            LOGGER.debug('block %d: %s done', id, self.blocks[id])
-        except Exception as exc:
-            try:
-                msg = exc.args[0]
-            except IndexError:
-                msg = exc.__class__.__name__
-            LOGGER.warning(
-                'block %d failed: %s, retrying %d/%d',
-                msg, tried, self.max_retries
-            )
-            return await self.download_block(id, tried + 1)
-
-    def close(self):
-        self.session.close()
-        self.output.close()
-        try:
-            self.tqdm.close()
-        except AttributeError:
-            pass
+        async with self.session.get(self.url, headers=header) as response:
+            response.raise_for_status()
+            async for chunk in response.content.iter_chunked(1024):
+                # Be sure that there's no 'await' between next two lines!
+                self.output.seek(self.blocks[id].begin)
+                self.output.write(chunk)
+                self.blocks[id].begin += len(chunk)
+                self.tqdm.update(len(chunk))
+        LOGGER.debug('block %d: %s done', id, self.blocks[id])
+        del self.blocks[id]
 
     async def download(self):
-        self.size = await self.get_download_size()
-        if self.num_blocks > self.size:
-            LOGGER.error(
-                'Too many blocks(%d > file size %d)!',
-                self.num_blocks, self.size
-            )
-            self.close()
-            return
+        with aiohttp.ClientSession() as session:
+            self.session = session
+            try:
+                self.size = await self.get_download_size()
+            except MaxRetryReachedError:
+                LOGGER.error('quit')
+                return
+            if self.num_blocks > self.size:
+                LOGGER.error(
+                    'Too many blocks(%d > file size %d)!',
+                    self.num_blocks, self.size
+                )
+                return
 
-        # pre-allocate file
-        os.posix_fallocate(self.output.fileno(), 0, self.size)
-        self.blocks = await self.split()
-        self.tqdm = tqdm(
-            total=self.size, unit='B',
-            unit_scale=True, unit_divisor=1024
-        )
-        await asyncio.wait(
-            [self.download_block(i, 0) for i in range(self.num_blocks)]
-        )
-        self.close()
+            with tqdm(
+                total=self.size, unit='B',
+                unit_scale=True, unit_divisor=1024
+            ) as t:
+                self.tqdm = t
+                if self.blocks is None:
+                    self.blocks = self.split()
+                    with open(self.output_fname, 'wb') as f:
+                        # pre-allocate file
+                        os.posix_fallocate(f.fileno(), 0, self.size)
+                else:
+                    t.update(self.size - sum(len(v) for k, v in self.blocks.items()))
+                with open(self.output_fname, 'rb+') as f:
+                    self.output = f
+                    try:
+                        await asyncio.gather(*(self.download_block(k, 0)
+                                               for k, v in self.blocks.items()
+                                               ))
+                    except MaxRetryReachedError:
+                        LOGGER.error('quit')
