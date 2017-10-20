@@ -5,7 +5,7 @@ import functools
 import os
 
 from tqdm import tqdm
-from aiohttp.client_exceptions import ClientConnectorError
+from aiohttp.client_exceptions import ClientError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -46,16 +46,17 @@ class Download:
                 tried += 1
                 try:
                     return await coro_func(self, *args, **kwargs)
-                except ClientConnectorError as exc:
+                except (ClientError, asyncio.TimeoutError) as exc:
+                    msg = str(exc) or exc.__class__.__name__
                     if tried <= self.max_retries:
                         LOGGER.warning(
                             '%s() failed: %s, retrying %d/%d',
-                            coro_func.__name__, exc.strerror, tried, self.max_retries
+                            coro_func.__name__, msg, tried, self.max_retries
                         )
                     else:
                         LOGGER.error(
                             '%s() failed: %s, max retry exceeded!',
-                            coro_func.__name__, exc.strerror
+                            coro_func.__name__, msg
                         )
                         raise MaxRetryReachedError from exc
         return wrapper
@@ -81,7 +82,7 @@ class Download:
         return blocks
 
     @retry
-    async def download_block(self, id, tried):
+    async def download_block(self, id):
         header = {'Range': 'bytes={}-{}'.format(*self.blocks[id])}
         async with self.session.get(self.url, headers=header) as response:
             response.raise_for_status()
@@ -124,7 +125,7 @@ class Download:
                 with open(self.output_fname, 'rb+') as f:
                     self.output = f
                     try:
-                        await asyncio.gather(*(self.download_block(k, 0)
+                        await asyncio.gather(*(self.download_block(k)
                                                for k, v in self.blocks.items()
                                                ))
                     except MaxRetryReachedError:
