@@ -39,6 +39,9 @@ def main():
         format=colored('%(levelname)s', 'cyan') + '\t%(message)s'
     )
     output = args.output or os.path.basename(urlsplit(args.url).path)
+    if not output:
+        LOGGER.error('Empty output file!')
+        return
     status_file = output + '.aget_st'
     if os.path.exists(status_file):
         LOGGER.info('using status file %s', status_file)
@@ -57,7 +60,7 @@ def main():
 
     try:
         asyncio.get_event_loop().run_until_complete(download.download())
-    except:
+    except (AgetQuitError, KeyboardInterrupt) as exc:
         LOGGER.info('saving status to %s', status_file)
         with open(status_file, 'wb') as f:
             pickle.dump(download.blocks, f)

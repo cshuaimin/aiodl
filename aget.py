@@ -5,7 +5,7 @@ import functools
 import os
 
 from tqdm import tqdm
-from aiohttp.client_exceptions import ClientError, ClientResponseError
+from aiohttp.client_exceptions import ClientError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -48,17 +48,19 @@ class Download:
                 tried += 1
                 try:
                     return await coro_func(self, *args, **kwargs)
-                except ClientResponseError as exc:
-                    msg = exc.args[0].replace(", message='", ' ')[:-1]
-                    LOGGER.error(msg)
-                    # won't retry
-                    raise AgetQuitError from exc
-                except (ClientError, asyncio.TimeoutError) as exc:
-                    msg = str(exc) or exc.__class__.__name__
+                except ClientError as exc:
+                    try:
+                        msg = '%d %s' % (exc.code, exc.message)
+                        # For 4xx client errors, it's no use to try again :)
+                        if 400 <= exc.code < 500:
+                            LOGGER.error(msg)
+                            raise AgetQuitError from exc
+                    except AttributeError:
+                        msg = str(exc) or msg.__class__.__name__
                     if tried <= self.max_retries:
-                        sec = tried * 2
+                        sec = tried / 2
                         LOGGER.warning(
-                            '%s() failed: %s, retry in %d seconds (%d/%d)',
+                            '%s() failed: %s, retry in %.1f seconds (%d/%d)',
                             coro_func.__name__, msg, sec,
                             tried, self.max_retries
                         )
@@ -69,6 +71,15 @@ class Download:
                             coro_func.__name__, msg
                         )
                         raise AgetQuitError from exc
+                except asyncio.TimeoutError:
+                    # Usually server has a fixed TCP timeout to clean dead
+                    # connections, so you can see a lot of timeouts appear
+                    # at the same time. I don't think this is an error,
+                    # So retry it without checking the max retries.
+                    LOGGER.warning(
+                        '%s() timeout, retry in 1 second', coro_func.__name__
+                    )
+                    await asyncio.sleep(1)
         return wrapper
 
     @retry
@@ -80,6 +91,8 @@ class Download:
             self.url, allow_redirects=True
         ) as response:
             response.raise_for_status()
+            # Use redirected URL
+            self.url = response.url
             size = int(response.headers['Content-Length'])
             LOGGER.info(
                 'Length: %s [%s]',
@@ -116,7 +129,9 @@ class Download:
         del self.blocks[id]
 
     async def download(self):
-        with aiohttp.ClientSession(headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.96 Safari/537.36'}) as session:
+        with aiohttp.ClientSession(
+            headers={'User-Agent': 'Aget/0.1'}
+        ) as session:
             self.session = session
             self.size = await self.get_download_size()
             if self.num_blocks > self.size:
