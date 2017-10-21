@@ -5,9 +5,11 @@ import logging
 import os
 
 from urllib.parse import urlsplit
-from aget import Download
+from termcolor import colored
+from aget import Download, AgetQuitError
 
 LOGGER = logging.getLogger(__name__)
+
 
 def main():
     ap = argparse.ArgumentParser(
@@ -27,18 +29,16 @@ def main():
         help='number of retries'
     )
     ap.add_argument(
-        '--verbose', '-v', action='count', dest='level', default=2,
-        help='verbose logging (repeat for more verbose)')
-    ap.add_argument(
-        '--quiet', '-q', action='store_const', const=0, dest='level',
-        default=2, help='only log errors')
-
+        '--quiet', '-q', action='store_true',
+        help='only log errors'
+    )
     args = ap.parse_args()
-    levels = [logging.ERROR, logging.WARN, logging.INFO, logging.DEBUG]
-    logging.basicConfig(level=levels[min(args.level, len(levels)-1)])
 
+    logging.basicConfig(
+        level=logging.ERROR if args.quiet else logging.INFO,
+        format=colored('%(levelname)s', 'cyan') + '\t%(message)s'
+    )
     output = args.output or os.path.basename(urlsplit(args.url).path)
-    LOGGER.info('saving to %s ...', output)
     status_file = output + '.aget_st'
     if os.path.exists(status_file):
         LOGGER.info('using status file %s', status_file)
@@ -51,11 +51,14 @@ def main():
         output_fname=output,
         num_blocks=args.num_blocks,
         blocks=blocks,
-        max_retries=args.max_retries
+        max_retries=args.max_retries,
+        quiet=args.quiet
     )
 
     try:
         asyncio.get_event_loop().run_until_complete(download.download())
+    except AgetQuitError:
+        LOGGER.error('Quiting...')
     except KeyboardInterrupt:
         LOGGER.info('saving status to %s', status_file)
         with open(status_file, 'wb') as f:
