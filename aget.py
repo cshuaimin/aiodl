@@ -73,7 +73,12 @@ class Download:
 
     @retry
     async def get_download_size(self):
-        async with self.session.head(self.url) as response:
+        async with self.session.head(
+            # Default `allow_redirects` for the head method is set to False,
+            # but it's common to download something from a non-direct link,
+            # eg. the redirect from HTTP to HTTPS.
+            self.url, allow_redirects=True
+        ) as response:
             response.raise_for_status()
             size = int(response.headers['Content-Length'])
             LOGGER.info(
