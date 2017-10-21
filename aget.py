@@ -14,19 +14,6 @@ class AgetQuitError(Exception):
     'Something caused aget to quit.'
 
 
-# Copied from tqdm.tqdm.format_sizeof() :)
-def format_size(num):
-    for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z']:
-        if abs(num) < 999.95:
-            if abs(num) < 99.95:
-                if abs(num) < 9.995:
-                    return '{0:1.2f}'.format(num) + unit + 'B'
-                return '{0:2.1f}'.format(num) + unit + 'B'
-            return '{0:3.0f}'.format(num) + unit + 'B'
-        num /= 1024
-    return '{0:3.1f}Y'.format(num) + 'B'
-
-
 class ClosedRange:
     def __init__(self, begin, end):
         self.begin = begin
@@ -91,7 +78,8 @@ class Download:
             size = int(response.headers['Content-Length'])
             LOGGER.info(
                 'Length: %s [%s]',
-                format_size(size), response.headers['Content-Type']
+                tqdm.format_sizeof(size, 'B', 1024),
+                response.headers['Content-Type']
             )
             return size
 
@@ -124,32 +112,32 @@ class Download:
 
     async def download(self):
         with aiohttp.ClientSession(headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.96 Safari/537.36'}) as session:
-            
             self.session = session
             self.size = await self.get_download_size()
             if self.num_blocks > self.size:
                 LOGGER.warning(
-                    'Too many blocks(%d > file size %d), use 1 block',
+                    'Too many blocks (%d > file size %d), using 1 block',
                     self.num_blocks, self.size
                 )
                 self.num_blocks = 1
+            if self.blocks is None:
+                downloaded_size = 0
+                self.blocks = self.split()
+                # pre-allocate file
+                with open(self.output_fname, 'wb') as f:
+                    os.posix_fallocate(f.fileno(), 0, self.size)
+            else:
+                downloaded_size = self.size - sum(
+                    len(v) for k, v in self.blocks.items()
+                )
 
             LOGGER.info("Saving to: '%s'", self.output_fname)
             with tqdm(
-                disable=self.quiet,
+                disable=self.quiet, initial=downloaded_size,
                 total=self.size, unit='B',
                 unit_scale=True, unit_divisor=1024
             ) as t:
                 self.tqdm = t
-                if self.blocks is None:
-                    self.blocks = self.split()
-                    # pre-allocate file
-                    with open(self.output_fname, 'wb') as f:
-                        os.posix_fallocate(f.fileno(), 0, self.size)
-                else:
-                    t.update(
-                        self.size - sum(len(v) for k, v in self.blocks.items())
-                    )
                 with open(self.output_fname, 'rb+') as f:
                     self.output = f
                     await asyncio.gather(*(self.download_block(k)

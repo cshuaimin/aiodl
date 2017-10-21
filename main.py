@@ -25,7 +25,7 @@ def main():
         help='number of blocks'
     )
     ap.add_argument(
-        '--max-retries', '-r', type=int, default=8,
+        '--max-retries', '-r', type=int, default=32,
         help='number of retries'
     )
     ap.add_argument(
@@ -57,9 +57,7 @@ def main():
 
     try:
         asyncio.get_event_loop().run_until_complete(download.download())
-    except AgetQuitError:
-        LOGGER.error('Quiting...')
-    except KeyboardInterrupt:
+    except:
         LOGGER.info('saving status to %s', status_file)
         with open(status_file, 'wb') as f:
             pickle.dump(download.blocks, f)
