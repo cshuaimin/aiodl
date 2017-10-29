@@ -120,7 +120,7 @@ class Download:
         header = {'Range': 'bytes={}-{}'.format(*self.blocks[id])}
         async with self.session.get(self.url, headers=header) as response:
             response.raise_for_status()
-            async for chunk in response.content.iter_chunked(1024):
+            async for chunk in response.content.iter_chunked(1024 * 1024):
                 # Be sure that there's no 'await' between next two lines!
                 self.output.seek(self.blocks[id].begin)
                 self.output.write(chunk)
@@ -153,9 +153,11 @@ class Download:
 
             LOGGER.info("Saving to: '%s'", self.output_fname)
             with tqdm(
-                disable=self.quiet, initial=downloaded_size,
-                total=self.size, unit='B',
-                unit_scale=True, unit_divisor=1024
+                disable=self.quiet,
+                initial=downloaded_size,
+                dynamic_ncols=True,  # Suitable for window resizing
+                total=self.size,
+                unit='B', unit_scale=True, unit_divisor=1024
             ) as t:
                 self.tqdm = t
                 with open(self.output_fname, 'rb+') as f:
