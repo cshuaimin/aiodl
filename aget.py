@@ -1,11 +1,15 @@
+"""An asynchronous downloader -- class implementing downloading logic."""
+
+__version__ = '0.1.1'
+
 import asyncio
 import aiohttp
 import logging
 import functools
+import shelve
 import os
 
 from tqdm import tqdm
-from aiohttp.client_exceptions import ClientError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,14 +35,17 @@ class ClosedRange:
 
 
 class Download:
-    def __init__(self, url, output_fname,
-                 num_blocks, blocks, max_retries, quiet):
+    def __init__(self, url, output_fname, num_blocks, max_tries):
         self.url = url
         self.output_fname = output_fname
         self.num_blocks = num_blocks
-        self.max_retries = max_retries
-        self.blocks = blocks
-        self.quiet = quiet
+        self.max_tries = max_tries
+        self.status_file = output_fname + '.aget_st'
+        loop = asyncio.get_event_loop()
+        self.session = aiohttp.ClientSession(
+            headers={'User-Agent': 'Aget/' + __version__},
+            loop=loop
+        )
 
     def retry(coro_func):
         @functools.wraps(coro_func)
@@ -48,7 +55,7 @@ class Download:
                 tried += 1
                 try:
                     return await coro_func(self, *args, **kwargs)
-                except ClientError as exc:
+                except aiohttp.ClientError as exc:
                     try:
                         msg = '%d %s' % (exc.code, exc.message)
                         # For 4xx client errors, it's no use to try again :)
@@ -57,18 +64,18 @@ class Download:
                             raise AgetQuitError from exc
                     except AttributeError:
                         msg = str(exc) or msg.__class__.__name__
-                    if tried <= self.max_retries:
+                    if tried <= self.max_tries:
                         sec = tried / 2
                         LOGGER.warning(
                             '%s() failed: %s, retry in %.1f seconds (%d/%d)',
                             coro_func.__name__, msg, sec,
-                            tried, self.max_retries
+                            tried, self.max_tries
                         )
                         await asyncio.sleep(sec)
                     else:
                         LOGGER.error(
-                            '%s() failed: %s, max retry exceeded!',
-                            coro_func.__name__, msg
+                            '%s() failed after %d tries: %s ',
+                            coro_func.__name__, self.max_tries, msg
                         )
                         raise AgetQuitError from exc
                 except asyncio.TimeoutError:
@@ -77,8 +84,7 @@ class Download:
                     # at the same time. I don't think this is an error,
                     # So retry it without checking the max retries.
                     LOGGER.warning(
-                        '%s() timeout, retry in 1 second', coro_func.__name__
-                    )
+                        '%s() timeout, retry in 1 second', coro_func.__name__)
                     await asyncio.sleep(1)
         return wrapper
 
@@ -92,7 +98,7 @@ class Download:
         ) as response:
             response.raise_for_status()
             # Use redirected URL
-            self.url = response.url
+            self.url = str(response.url)
             size = int(response.headers['Content-Length'])
             LOGGER.info(
                 'Length: %s [%s]',
@@ -129,39 +135,59 @@ class Download:
         del self.blocks[id]
 
     async def download(self):
-        with aiohttp.ClientSession(
-            headers={'User-Agent': 'Aget/0.1'}
-        ) as session:
-            self.session = session
+        if os.path.exists(self.status_file):
+            LOGGER.info('using status file %s', self.status_file)
+            with shelve.open(self.status_file) as db:
+                self.size = db['size']
+                self.blocks = db['blocks']
+            downloaded_size = self.size - sum(
+                len(r) for r in self.blocks.values()
+            )
+            # 'r+b' -- opens the file for binary random access,
+            # without truncates it to 0 byte (which 'w+b' does)
+            self.output = open(self.output_fname, 'r+b')
+        else:
             self.size = await self.get_download_size()
             if self.num_blocks > self.size:
                 LOGGER.warning(
                     'Too many blocks (%d > file size %d), using 1 block',
-                    self.num_blocks, self.size
-                )
+                    self.num_blocks, self.size)
                 self.num_blocks = 1
-            if self.blocks is None:
-                downloaded_size = 0
-                self.blocks = self.split()
-                # pre-allocate file
-                with open(self.output_fname, 'wb') as f:
-                    os.posix_fallocate(f.fileno(), 0, self.size)
-            else:
-                downloaded_size = self.size - sum(
-                    len(v) for k, v in self.blocks.items()
-                )
+            self.blocks = self.split()
+            downloaded_size = 0
+            self.output = open(self.output_fname, 'wb')
+            # pre-allocate file
+            os.posix_fallocate(self.output.fileno(), 0, self.size)
 
-            LOGGER.info("Saving to: '%s'", self.output_fname)
-            with tqdm(
-                disable=self.quiet,
-                initial=downloaded_size,
-                dynamic_ncols=True,  # Suitable for window resizing
-                total=self.size,
-                unit='B', unit_scale=True, unit_divisor=1024
-            ) as t:
-                self.tqdm = t
-                with open(self.output_fname, 'rb+') as f:
-                    self.output = f
-                    await asyncio.gather(*(self.download_block(k)
-                                           for k, v in self.blocks.items()
-                                           ))
+        self.tqdm = tqdm(
+            desc=self.output_fname,
+            initial=downloaded_size,
+            dynamic_ncols=True,  # Suitable for window resizing
+            total=self.size,
+            unit='B', unit_scale=True, unit_divisor=1024
+        )
+
+        await asyncio.gather(
+            *(self.download_block(id) for id in self.blocks)
+        )
+
+    def close(self):
+        self.session.close()
+        try:
+            self.output.close()
+            self.tqdm.close()
+        except AttributeError:
+            pass
+
+        # if self has 'blocks', and blocks is not empty
+        if getattr(self, 'blocks', None):
+            LOGGER.info('Saving status to %s', self.status_file)
+            with shelve.open(self.status_file) as db:
+                db['size'] = self.size
+                db['blocks'] = self.blocks
+        elif os.path.exists(self.status_file):
+            LOGGER.info(
+                'downloading completed, removing status file %s',
+                self.status_file
+            )
+            os.remove(self.status_file)
