@@ -10,8 +10,7 @@ setup(
     description = 'Aiodl -- Yet another command line download accelerator.',
     author = 'cshuaimin',
     author_email = 'chen_shuaimin@outlook.com',
-    url = 'https://github.com/cshuaimin/aget',
-    scripts=['aiodl/aiodl'],
+    url = 'https://github.com/cshuaimin/aiodl',
     python_requires='>=3.5',
     install_requires=['aiohttp', 'tqdm', 'termcolor', 'argparse'],
 
@@ -24,5 +23,10 @@ setup(
         'Programming Language :: Python :: 3.6',
     ],
     license="MIT",
-    keywords='asynchronous download'
+    keywords='asynchronous download',
+    entry_points={
+        'console_scripts': [
+            'aiodl = aiodl.main:main'
+        ]
+    }
 )
