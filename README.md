@@ -11,35 +11,29 @@ Aiodl -- Yet another command line download accelerator.
 
 ## Requirements
 
-- Python >= 3.5
-    Aiodl is written with Python 3.5 async/await syntax.
+- Python >= 3.5 Aiodl is written with Python 3.5 async/await syntax.
 
 ## Installation
 
-- Use pip.
-    
-    ```bash
-    $ pip3 install aiodl --user
-    ```
-    or
-    ```bash
-    $ sudo pip3 install aiodl
-    ```
-
-- Or just clone this repository and setup an alias.
-
-    ```bash
-    $ git clone git@github.com:cshuaimin/aiodl.git
-    $ alias aiodl='~/aiodl/aiodl'
-    ```
+```bash
+$ pip3 install aiodl --user
+```
+or
+```bash
+$ sudo pip3 install aiodl
+```
 
 ## Usage
 
 Simply call `aiodl` with the URL:
 ```bash
 $ aiodl https://dl.google.com/translate/android/Translate.apk
-Length: 16.0MB [application/vnd.android.package-archive]
-Translate.apk:  21%|████▌                 | 3.30M/16.0M [00:04<00:13, 984KB/s]
+
+  File: Translate.apk
+  Size: 16.8M
+  Type: application/vnd.android.package-archive
+
+ 11%|████▎                                  | 1.78M/16.0M [00:03<00:26, 565KB/s]
 ```
 
 Customize output file with '-o' or '--output' option:
