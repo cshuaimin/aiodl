@@ -5,15 +5,13 @@ import re
 with open('aiodl/__version__.py') as f:
     version = re.match(r'^__version__ = [\'"](.+)[\'"]$', f.read()).group(1)
 
-with open('README.md') as f:
-    long_description = f.read()
-
 setup(
     name='aiodl',
     packages=['aiodl'],
     version=version,
     description='Aiodl -- Yet another command line download accelerator.',
-    long_description=long_description,
+    setup_requires=['setuptools-markdown'],
+    long_description_markdown_filename='README.md',
     author='cshuaimin',
     author_email='chen_shuaimin@outlook.com',
     url='https://github.com/cshuaimin/aiodl',
