@@ -13,7 +13,7 @@ from tqdm import tqdm
 from .color import print_colored_kv
 
 class AiodlQuitError(Exception):
-    'Something caused aget to quit.'
+    'Something caused aiodl to quit.'
 
 
 class ClosedRange:
@@ -38,7 +38,7 @@ class Download:
         self.output_fname = output_fname
         self.num_blocks = num_blocks
         self.max_tries = max_tries
-        self.status_file = output_fname + '.aget_st'
+        self.status_file = output_fname + '.aiodl'
         loop = asyncio.get_event_loop()
         self.session = aiohttp.ClientSession(
             headers={'User-Agent': 'Aiodl/' + __version__},

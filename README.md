@@ -36,12 +36,9 @@ $ aiodl https://dl.google.com/translate/android/Translate.apk
  11%|████▎                                  | 1.78M/16.0M [00:03<00:26, 565KB/s]
 ```
 
+Hit Ctrl+C to stop the download. Aiodl will save necessary information to `<download-file>.aiodl`, next time it will automatically continue to download from here.
+
 Customize output file with '-o' or '--output' option:
 ```bash
 $ aiodl https://dl.google.com/translate/android/Translate.apk -o Google_Translate.apk
-```
-
-See more arguments with
-```bash
-$ aiodl -h
 ```
