@@ -30,7 +30,7 @@ Aiodl -- Yet another command line download accelerator.
 
     ```bash
     $ git clone git@github.com:cshuaimin/aiodl.git
-    $ alias aiodl='python3 ~/aiodl/main.py'
+    $ alias aiodl='~/aiodl/aiodl'
     ```
 
 ## Usage
