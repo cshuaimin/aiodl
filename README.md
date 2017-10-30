@@ -1,21 +1,21 @@
-### Aiodl
+## Aiodl
 
 Aiodl -- Yet another command line download accelerator.
 
-### Features
+## Features
 
 - Accelerate the downloading process by using multiple connections for one file.
 - Reasonable retries on network errors.
 - Breakpoint resume.
 
-### Requirements
+## Requirements
 
 - Python >= 3.5
     Aiodl is written with Python 3.5 async/await syntax.
 
-### Installation
+## Installation
 
-1. Use pip.
+- Use pip.
     
     ```bash
     $ pip3 install aiodl --user
@@ -25,14 +25,14 @@ Aiodl -- Yet another command line download accelerator.
     $ sudo pip3 install aiodl
     ```
 
-2. Just clone this repository and setup an alias.
+- Or just clone this repository and setup an alias.
 
     ```bash
     $ git clone git@github.com:cshuaimin/aiodl.git
-    $ alias aiodl='python3 aiodl/main.py'
+    $ alias aiodl='python3 ~/aiodl/main.py'
     ```
 
-### Usage
+## Usage
 
 Simply call `aiodl` with the URL:
 ```bash
@@ -44,4 +44,9 @@ Translate.apk:  21%|████▌                 | 3.30M/16.0M [00:04<00:13, 
 Customize output file with '-o' or '--output' option:
 ```bash
 $ aiodl https://dl.google.com/translate/android/Translate.apk -o Google_Translate.apk
+```
+
+See more arguments with
+```bash
+$ aiodl -h
 ```
