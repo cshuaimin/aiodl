@@ -1,17 +1,28 @@
-import sys
-from distutils.core import setup
+from setuptools import setup
+import os
 
-if sys.version_info < (3, 5, 0):
-    raise RuntimeError("Aiodl requires Python 3.5.0+")
+from aiodl import __version__
 
 setup(
     name = 'aiodl',
     packages=['aiodl'],
-    version = '0.2.0-alpha',
+    version = __version__,
     description = 'Aiodl -- Yet another command line download accelerator.',
     author = 'cshuaimin',
     author_email = 'chen_shuaimin@outlook.com',
     url = 'https://github.com/cshuaimin/aget',
-    download_url = 'https://github.com/cshuaimin/aget/archive/v0.2.0-alpha.tar.gz',
-    scripts=['main.py']
+    scripts=['aiodl/aiodl'],
+    python_requires='>=3.5',
+    install_requires=['aiohttp', 'tqdm', 'termcolor', 'argparse'],
+
+    classifiers=[
+        'Development Status :: 3 - Alpha',
+
+        'License :: OSI Approved :: MIT License',
+
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+    ],
+    license="MIT",
+    keywords='asynchronous download'
 )

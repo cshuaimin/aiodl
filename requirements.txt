@@ -1,4 +1,0 @@
-aiohttp
-tqdm
-termcolor
-argparse

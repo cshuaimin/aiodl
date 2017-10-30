@@ -1,4 +1,5 @@
 ## Aiodl
+[![PyPI version](https://badge.fury.io/py/aiodl.svg)](https://badge.fury.io/py/aiodl)
 
 Aiodl -- Yet another command line download accelerator.
 
