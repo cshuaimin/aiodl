@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-
 import asyncio
 import argparse
 import logging
@@ -7,7 +5,8 @@ import urllib
 import os
 
 from termcolor import colored
-from aiodl import Download, AiodlQuitError
+
+from .aiodl import Download, AiodlQuitError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -61,3 +60,7 @@ def main():
         pass
     finally:
         d.close()
+
+
+if __name__ == '__main__':
+    main()
