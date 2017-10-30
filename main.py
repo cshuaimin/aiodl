@@ -5,7 +5,7 @@ import urllib
 import os
 
 from termcolor import colored
-from aget import Download, AgetQuitError
+from aiodl import Download, AiodlQuitError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ d = Download(
 )
 try:
     asyncio.get_event_loop().run_until_complete(d.download())
-except (KeyboardInterrupt, AgetQuitError):
+except (KeyboardInterrupt, AiodlQuitError):
     pass
 finally:
     d.close()

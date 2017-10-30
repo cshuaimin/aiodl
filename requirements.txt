@@ -1,3 +1,4 @@
 aiohttp
 tqdm
 termcolor
+argparse

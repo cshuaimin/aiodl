@@ -1,6 +1,6 @@
 """An asynchronous downloader -- class implementing downloading logic."""
 
-__version__ = '0.1.1'
+__version__ = '0.2.0'
 
 import asyncio
 import aiohttp
@@ -14,7 +14,7 @@ from tqdm import tqdm
 LOGGER = logging.getLogger(__name__)
 
 
-class AgetQuitError(Exception):
+class AiodlQuitError(Exception):
     'Something caused aget to quit.'
 
 
@@ -61,7 +61,7 @@ class Download:
                         # For 4xx client errors, it's no use to try again :)
                         if 400 <= exc.code < 500:
                             LOGGER.error(msg)
-                            raise AgetQuitError from exc
+                            raise AiodlQuitError from exc
                     except AttributeError:
                         msg = str(exc) or msg.__class__.__name__
                     if tried <= self.max_tries:
@@ -77,7 +77,7 @@ class Download:
                             '%s() failed after %d tries: %s ',
                             coro_func.__name__, self.max_tries, msg
                         )
-                        raise AgetQuitError from exc
+                        raise AiodlQuitError from exc
                 except asyncio.TimeoutError:
                     # Usually server has a fixed TCP timeout to clean dead
                     # connections, so you can see a lot of timeouts appear
