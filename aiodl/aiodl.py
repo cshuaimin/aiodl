@@ -1,7 +1,5 @@
 """An asynchronous downloader -- class implementing downloading logic."""
 
-__version__ = '0.2.3'
-
 import asyncio
 import aiohttp
 import functools
@@ -11,6 +9,7 @@ import os
 from tqdm import tqdm
 
 from .color import print_colored_kv
+from .__version__ import __version__
 
 class AiodlQuitError(Exception):
     'Something caused aiodl to quit.'
