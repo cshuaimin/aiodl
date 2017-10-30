@@ -1,18 +1,16 @@
 """An asynchronous downloader -- class implementing downloading logic."""
 
-__version__ = '0.2.2'
+__version__ = '0.2.3'
 
 import asyncio
 import aiohttp
-import logging
 import functools
 import shelve
 import os
 
 from tqdm import tqdm
 
-LOGGER = logging.getLogger(__name__)
-
+from .color import print_colored_kv
 
 class AiodlQuitError(Exception):
     'Something caused aget to quit.'
@@ -43,7 +41,7 @@ class Download:
         self.status_file = output_fname + '.aget_st'
         loop = asyncio.get_event_loop()
         self.session = aiohttp.ClientSession(
-            headers={'User-Agent': 'Aget/' + __version__},
+            headers={'User-Agent': 'Aiodl/' + __version__},
             loop=loop
         )
 
@@ -60,22 +58,22 @@ class Download:
                         msg = '%d %s' % (exc.code, exc.message)
                         # For 4xx client errors, it's no use to try again :)
                         if 400 <= exc.code < 500:
-                            LOGGER.error(msg)
+                            tqdm.write(msg)
                             raise AiodlQuitError from exc
                     except AttributeError:
                         msg = str(exc) or msg.__class__.__name__
                     if tried <= self.max_tries:
                         sec = tried / 2
-                        LOGGER.warning(
-                            '%s() failed: %s, retry in %.1f seconds (%d/%d)',
-                            coro_func.__name__, msg, sec,
-                            tried, self.max_tries
+                        tqdm.write(
+                            '%s() failed: %s, retry in %.1f seconds (%d/%d)' %
+                            (coro_func.__name__, msg,
+                             sec, tried, self.max_tries)
                         )
                         await asyncio.sleep(sec)
                     else:
-                        LOGGER.error(
-                            '%s() failed after %d tries: %s ',
-                            coro_func.__name__, self.max_tries, msg
+                        tqdm.write(
+                            '%s() failed after %d tries: %s ' %
+                            (coro_func.__name__, self.max_tries, msg)
                         )
                         raise AiodlQuitError from exc
                 except asyncio.TimeoutError:
@@ -83,29 +81,27 @@ class Download:
                     # connections, so you can see a lot of timeouts appear
                     # at the same time. I don't think this is an error,
                     # So retry it without checking the max retries.
-                    LOGGER.warning(
-                        '%s() timeout, retry in 1 second', coro_func.__name__)
+                    tqdm.write(
+                        '%s() timeout, retry in 1 second' % coro_func.__name__)
                     await asyncio.sleep(1)
         return wrapper
 
     @retry
-    async def get_download_size(self):
+    async def get_download_info(self):
         async with self.session.head(
-            # Default `allow_redirects` for the head method is set to False,
+            # Default `allow_errorirects` for the head method is set to False,
             # but it's common to download something from a non-direct link,
-            # eg. the redirect from HTTP to HTTPS.
+            # eg. the errorirect from HTTP to HTTPS.
             self.url, allow_redirects=True
         ) as response:
             response.raise_for_status()
             # Use redirected URL
             self.url = str(response.url)
-            size = int(response.headers['Content-Length'])
-            LOGGER.info(
-                'Length: %s [%s]',
-                tqdm.format_sizeof(size, 'B', 1024),
+
+            return (
+                int(response.headers['Content-Length']),
                 response.headers['Content-Type']
             )
-            return size
 
     def split(self):
         part_len, remain = divmod(self.size, self.num_blocks)
@@ -131,15 +127,16 @@ class Download:
                 self.output.seek(self.blocks[id].begin)
                 self.output.write(chunk)
                 self.blocks[id].begin += len(chunk)
-                self.tqdm.update(len(chunk))
+                self.bar.update(len(chunk))
         del self.blocks[id]
 
     async def download(self):
+        tqdm.write('')
         if os.path.exists(self.status_file):
-            LOGGER.info('using status file %s', self.status_file)
             with shelve.open(self.status_file) as db:
                 self.size = db['size']
                 self.blocks = db['blocks']
+                self.content_type = db['type']
             downloaded_size = self.size - sum(
                 len(r) for r in self.blocks.values()
             )
@@ -147,11 +144,12 @@ class Download:
             # without truncates it to 0 byte (which 'w+b' does)
             self.output = open(self.output_fname, 'r+b')
         else:
-            self.size = await self.get_download_size()
+            self.size, self.content_type = await self.get_download_info()
             if self.num_blocks > self.size:
-                LOGGER.warning(
-                    'Too many blocks (%d > file size %d), using 1 block',
-                    self.num_blocks, self.size)
+                tqdm.write(
+                    'Too many blocks (%d > file size %d), using 1 block' %
+                    (self.num_blocks, self.size)
+                )
                 self.num_blocks = 1
             self.blocks = self.split()
             downloaded_size = 0
@@ -159,8 +157,16 @@ class Download:
             # pre-allocate file
             os.posix_fallocate(self.output.fileno(), 0, self.size)
 
-        self.tqdm = tqdm(
-            desc=self.output_fname,
+        print_colored_kv('File', self.output_fname)
+        formatted_size = tqdm.format_sizeof(self.size)
+        if downloaded_size:
+            formatted_size += ' (already downloaded {})'.format(
+                tqdm.format_sizeof(downloaded_size))
+        print_colored_kv('Size', formatted_size)
+        print_colored_kv('Type', self.content_type)
+        tqdm.write('')
+
+        self.bar = tqdm(
             initial=downloaded_size,
             dynamic_ncols=True,  # Suitable for window resizing
             total=self.size,
@@ -175,19 +181,20 @@ class Download:
         self.session.close()
         try:
             self.output.close()
-            self.tqdm.close()
+            self.bar.close()
         except AttributeError:
             pass
 
         # if self has 'blocks', and blocks is not empty
         if getattr(self, 'blocks', None):
-            LOGGER.info('Saving status to %s', self.status_file)
+            tqdm.write('Saving status to %s' % self.status_file)
             with shelve.open(self.status_file) as db:
                 db['size'] = self.size
                 db['blocks'] = self.blocks
+                db['type'] = self.content_type
         elif os.path.exists(self.status_file):
-            LOGGER.info(
-                'downloading completed, removing status file %s',
-                self.status_file
-            )
+            #  tqdm.write(
+            #      'downloading completed, removing status file %s' %
+            #      self.status_file
+            #  )
             os.remove(self.status_file)
