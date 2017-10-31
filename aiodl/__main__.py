@@ -1,61 +1,49 @@
 import asyncio
 import argparse
-import logging
-import urllib
-import os
+import sys
 
-from termcolor import colored
+from fake_useragent import UserAgent
 
-from .aiodl import Download, AiodlQuitError
-
-LOGGER = logging.getLogger(__name__)
+from .aiodl import Download
+from .utils import AiodlQuitError
 
 
 def main():
     ap = argparse.ArgumentParser(
-        description='Download files asynchronously in a single thread!'
+        description='Aiodl -- Yet another command line download accelerator.'
     )
 
-    ap.add_argument('url', help='URL to download')
+    ap.add_argument('url', metavar='URL', help='URL to download')
     ap.add_argument(
-        '--output', '-o', help='output file'
+        '--output', '-o', help='Output filename.'
     )
+    ap.add_argument('--fake-user-agent', '-u', action='store_true',
+        help='Use a fake User-Agent.')
     ap.add_argument(
-        '--num-blocks', '-n', type=int, metavar='N', default=16,
-        help='number of blocks'
+        '--num-tasks', '-n', type=int, metavar='N', default=16,
+        help='Limit number of asynchronous tasks.'
     )
     ap.add_argument(
         '--max-tries', '-r', type=int, metavar='N', default=10,
-        help='limit retries on network errors'
+        help='Limit retries on network errors.'
     )
-    ap.add_argument(
-        '--quiet', '-q', action='store_true',
-        help='only log errors'
-    )
+
     args = ap.parse_args()
-
-    logging.basicConfig(
-        level=logging.ERROR if args.quiet else logging.INFO,
-        format=colored('%(levelname)s', 'cyan') + '\t%(message)s'
-    )
-    if args.output:
-        output = args.output
+    if args.fake_user_agent:
+        user_agent = UserAgent().random
     else:
-        parts = urllib.parse.urlparse(args.url)
-        output = os.path.basename(parts.path)
-    if not output:
-        LOGGER.error('The file name can not be parsed from the URL. '
-                     'Please use the "-o" parameter.')
-        exit(1)
-
+        user_agent = None
+    loop = asyncio.get_event_loop()
     d = Download(
         url=args.url,
-        output_fname=output,
-        num_blocks=args.num_blocks,
+        output_fname=args.output,
+        num_tasks=args.num_tasks,
         max_tries=args.max_tries,
+        user_agent=user_agent,
+        loop=loop
     )
     try:
-        asyncio.get_event_loop().run_until_complete(d.download())
+        return loop.run_until_complete(d.download())
     except (KeyboardInterrupt, AiodlQuitError):
         pass
     finally:
@@ -63,4 +51,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
