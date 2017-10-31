@@ -45,6 +45,7 @@ class Download:
                 content_disposition = cgi.parse_header(
                     response.headers['Content-Disposition'])
                 filename = content_disposition[1]['filename']
+                filename = urllib.parse.unquote_plus(filename)
             except KeyError:
                 filename = None
             return (

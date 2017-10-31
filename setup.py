@@ -2,7 +2,7 @@ from setuptools import setup
 import re
 
 
-with open('aiodl/__version__.py') as f:
+with open('aiodl/version.py') as f:
     version = re.match(r'^__version__ = [\'"](.+)[\'"]$', f.read()).group(1)
 
 setup(
