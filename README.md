@@ -17,9 +17,7 @@ Aiodl -- Yet another command line download accelerator.
 
 ```bash
 $ pip3 install aiodl --user
-```
-or
-```bash
+$ # or
 $ sudo pip3 install aiodl
 ```
 
@@ -38,7 +36,10 @@ $ aiodl https://dl.google.com/translate/android/Translate.apk
 
 Hit Ctrl+C to stop the download. Aiodl will save necessary information to `<download-file>.aiodl`, next time it will automatically continue to download from here.
 
-Customize output file with '-o' or '--output' option:
-```bash
-$ aiodl https://dl.google.com/translate/android/Translate.apk -o Google_Translate.apk
+Other arguments:
+
+```
+--fake-user-agent, -u  Use a fake User-Agent.
+--num-tasks N, -n N    Limit number of asynchronous tasks.
+--max-tries N, -r N    Limit retries on network errors.
 ```
