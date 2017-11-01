@@ -2,6 +2,7 @@ import asyncio
 import aiohttp
 import random
 import functools
+import socket
 
 from termcolor import colored, COLORS
 from tqdm import tqdm
@@ -33,7 +34,9 @@ class ClosedRange:
     def __str__(self):
         return '[{0.begin}, {0.end}]'.format(self)
 
-    def __len__(self):
+    # Why not __len__() ? See https://stackoverflow.com/questions/47048561/
+    @property
+    def size(self):
         return self.end - self.begin + 1
 
 
@@ -45,7 +48,7 @@ def retry(coro_func):
             tried += 1
             try:
                 return await coro_func(self, *args, **kwargs)
-            except aiohttp.ClientError as exc:
+            except (aiohttp.ClientError, socket.gaierror) as exc:
                 try:
                     msg = '%d %s' % (exc.code, exc.message)
                     # For 4xx client errors, it's no use to try again :)

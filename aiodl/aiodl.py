@@ -73,7 +73,7 @@ class Download:
         header = {'Range': 'bytes={}-{}'.format(*self.blocks[id])}
         async with self.session.get(self.url, headers=header) as response:
             response.raise_for_status()
-            async for chunk in response.content.iter_chunked(1024 * 1024):
+            async for chunk in response.content.iter_any():
                 # Be sure that there's no 'await' between next two lines!
                 self.output.seek(self.blocks[id].begin)
                 self.output.write(chunk)
@@ -99,7 +99,7 @@ class Download:
             with open(self.status_file, 'rb') as f:
                 self.blocks = pickle.load(f)
             downloaded_size = self.size - sum(
-                len(r) for r in self.blocks.values()
+                r.size for r in self.blocks.values()
             )
             # 'r+b' -- opens the file for binary random access,
             # without truncates it to 0 byte (which 'w+b' does)
@@ -118,10 +118,10 @@ class Download:
             os.posix_fallocate(self.output.fileno(), 0, self.size)
 
         print_colored_kv('File', self.output_fname)
-        formatted_size = tqdm.format_sizeof(self.size)
+        formatted_size = tqdm.format_sizeof(self.size, 'B', 1024)
         if downloaded_size:
             formatted_size += ' (already downloaded {})'.format(
-                tqdm.format_sizeof(downloaded_size))
+                tqdm.format_sizeof(downloaded_size, 'B', 1024))
         print_colored_kv('Size', formatted_size)
         print_colored_kv('Type', file_type)
         tqdm.write('')
