@@ -118,7 +118,10 @@ class Download:
             downloaded_size = 0
             self.output = open(self.output_fname, 'wb')
             # pre-allocate file
-            os.posix_fallocate(self.output.fileno(), 0, self.size)
+            try:
+                os.posix_fallocate(self.output.fileno(), 0, self.size)
+            except OSError:
+                pass
 
         print_colored_kv('File', self.output_fname)
         formatted_size = tqdm.format_sizeof(self.size, 'B', 1024)

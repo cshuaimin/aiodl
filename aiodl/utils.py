@@ -97,6 +97,8 @@ def connecting(connecting='  Connecting'):
             nonlocal length
             length += 1
     fut = asyncio.ensure_future(print_dots())
-    yield
-    fut.cancel()
-    print('\r' + ' ' * length)
+    try:
+        yield
+    finally:
+        fut.cancel()
+        print('\r' + ' ' * length)
