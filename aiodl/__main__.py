@@ -48,9 +48,9 @@ def main():
         pass
     finally:
         d.close()
-        # Wait 250 ms for the underlying SSL connections to close
-        loop.run_until_complete(asyncio.sleep(0.250))
-        loop.close()
+        # next two lines are required for actual aiohttp resource cleanup
+        loop.stop()
+        loop.run_forever()
 
 
 if __name__ == '__main__':

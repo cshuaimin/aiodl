@@ -4,6 +4,7 @@ import random
 import functools
 import socket
 
+from contextlib import contextmanager
 from termcolor import colored, COLORS
 from tqdm import tqdm
 
@@ -56,7 +57,7 @@ def retry(coro_func):
                         tqdm.write(msg)
                         raise AiodlQuitError from exc
                 except AttributeError:
-                    msg = str(exc) or msg.__class__.__name__
+                    msg = str(exc) or exc.__class__.__name__
                 if tried <= self.max_tries:
                     sec = tried / 2
                     tqdm.write(
@@ -80,3 +81,22 @@ def retry(coro_func):
                     '%s() timeout, retry in 1 second' % coro_func.__name__)
                 await asyncio.sleep(1)
     return wrapper
+
+
+@contextmanager
+def connecting(connecting='  Connecting'):
+    length = len(connecting)
+    print(colored(connecting, 'grey', attrs=['bold']), end='', flush=True)
+    async def print_dots():
+        while True:
+            try:
+                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                break
+            print(colored('.', 'grey', attrs=['bold']), end='', flush=True)
+            nonlocal length
+            length += 1
+    fut = asyncio.ensure_future(print_dots())
+    yield
+    fut.cancel()
+    print('\r' + ' ' * length)

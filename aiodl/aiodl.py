@@ -13,7 +13,8 @@ from .version import __version__
 from .utils import (
     print_colored_kv,
     ClosedRange,
-    retry
+    retry,
+    connecting
 )
 
 
@@ -81,9 +82,11 @@ class Download:
                 self.bar.update(len(chunk))
         del self.blocks[id]
 
+
     async def download(self):
-        tqdm.write('')  # TODO
-        filename, self.size, file_type = await self.get_download_info()
+        with connecting():
+            filename, self.size, file_type = await self.get_download_info()
+
         if not self.output_fname:
             self.output_fname = filename
         if not self.output_fname:
@@ -142,13 +145,11 @@ class Download:
         try:
             self.output.close()
             self.bar.close()
+            if self.blocks:
+                tqdm.write('Saving status to %s' % self.status_file)
+                with open(self.status_file, 'wb') as f:
+                    pickle.dump(self.blocks, f)
+            elif os.path.exists(self.status_file):
+                os.remove(self.status_file)
         except AttributeError:
             pass
-
-        # if self has 'blocks', and blocks is not empty
-        if getattr(self, 'blocks', None):
-            tqdm.write('Saving status to %s' % self.status_file)
-            with open(self.status_file, 'wb') as f:
-                pickle.dump(self.blocks, f)
-        elif os.path.exists(self.status_file):
-            os.remove(self.status_file)

@@ -16,7 +16,7 @@ setup(
     author_email='chen_shuaimin@outlook.com',
     url='https://github.com/cshuaimin/aiodl',
     python_requires='>=3.5',
-    install_requires=['aiohttp', 'tqdm', 'termcolor', 'argparse'],
+    install_requires=['aiohttp', 'tqdm', 'termcolor', 'argparse', 'fake_useragent'],
 
     classifiers=[
         'Development Status :: 3 - Alpha',
