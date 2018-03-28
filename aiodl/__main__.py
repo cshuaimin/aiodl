@@ -23,6 +23,8 @@ def main():
         '--max-tries', '-r', type=int, metavar='N', default=10,
         help='Limit retries on network errors.'
     )
+    ap.add_argument('--quiet', '-q', action='store_true', default=False,
+                    help='Displays or disables the progress bar.')
 
     args = ap.parse_args()
     try:

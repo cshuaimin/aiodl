@@ -9,22 +9,19 @@ Aiodl -- Yet another command line download accelerator.
 - Reasonable retries on network errors.
 - Breakpoint resume.
 
-## Requirements
-
-- Python >= 3.5 Aiodl is written with Python 3.5 async/await syntax.
-
 ## Installation
 
 ```bash
 $ pip3 install aiodl --user
-$ # or
+# or
 $ sudo pip3 install aiodl
 ```
 
 ## Usage
 
+### Commandline
 Simply call `aiodl` with the URL:
-```bash
+```console
 $ aiodl https://dl.google.com/translate/android/Translate.apk
 
   File: Translate.apk
@@ -42,4 +39,13 @@ Other arguments:
 --fake-user-agent, -u  Use a fake User-Agent.
 --num-tasks N, -n N    Limit number of asynchronous tasks.
 --max-tries N, -r N    Limit retries on network errors.
+```
+
+### In your script
+
+```python
+import aiodl
+
+# in an async function
+filename = await aiodl.download('https://dl.google.com/translate/android/Translate.apk', quiet=True)
 ```

@@ -20,11 +20,12 @@ from .utils import (
 
 class Download:
     def __init__(self, url, output_fname=None, num_tasks=16,
-                 max_tries=10, user_agent=None, *, loop=None):
+                 max_tries=10, user_agent=None, quiet=False, *, loop=None):
         self.url = url
         self.output_fname = output_fname
         self.num_tasks = num_tasks
         self.max_tries = max_tries
+        self.quiet = quiet
         self.session = aiohttp.ClientSession(
             headers={'User-Agent': user_agent or 'Aiodl/' + __version__},
             loop=loop or asyncio.get_event_loop()
@@ -83,8 +84,11 @@ class Download:
         del self.blocks[id]
 
     async def download(self):
-        with connecting():
+        if self.quiet:
             filename, self.size, file_type = await self.get_download_info()
+        else:
+            with connecting():
+                filename, self.size, file_type = await self.get_download_info()
 
         if not self.output_fname:
             self.output_fname = filename
@@ -122,16 +126,18 @@ class Download:
             except OSError:
                 pass
 
-        print_colored_kv('File', self.output_fname)
-        formatted_size = tqdm.format_sizeof(self.size, 'B', 1024)
-        if downloaded_size:
-            formatted_size += ' (already downloaded {})'.format(
-                tqdm.format_sizeof(downloaded_size, 'B', 1024))
-        print_colored_kv('Size', formatted_size)
-        print_colored_kv('Type', file_type)
-        tqdm.write('')
+        if not self.quiet:
+            print_colored_kv('File', self.output_fname)
+            formatted_size = tqdm.format_sizeof(self.size, 'B', 1024)
+            if downloaded_size:
+                formatted_size += ' (already downloaded {})'.format(
+                    tqdm.format_sizeof(downloaded_size, 'B', 1024))
+            print_colored_kv('Size', formatted_size)
+            print_colored_kv('Type', file_type)
+            tqdm.write('')
 
         self.bar = tqdm(
+            disable=self.quiet,
             initial=downloaded_size,
             dynamic_ncols=True,  # Suitable for window resizing
             total=self.size,
@@ -141,6 +147,7 @@ class Download:
         await asyncio.gather(
             *(self.download_block(id) for id in self.blocks)
         )
+        return self.output_fname
 
     async def close(self):
         await self.session.close()

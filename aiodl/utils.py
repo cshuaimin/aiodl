@@ -84,9 +84,10 @@ def retry(coro_func):
 
 
 @contextmanager
-def connecting(connecting='  Connecting'):
-    length = len(connecting)
-    print(colored(connecting, 'grey', attrs=['bold']), end='', flush=True)
+def connecting(msg='  Connecting'):
+    length = len(msg)
+    print(colored(msg, 'grey', attrs=['bold']), end='', flush=True)
+
     async def print_dots():
         while True:
             try:
