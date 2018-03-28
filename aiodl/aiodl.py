@@ -82,7 +82,6 @@ class Download:
                 self.bar.update(len(chunk))
         del self.blocks[id]
 
-
     async def download(self):
         with connecting():
             filename, self.size, file_type = await self.get_download_info()
@@ -143,8 +142,8 @@ class Download:
             *(self.download_block(id) for id in self.blocks)
         )
 
-    def close(self):
-        self.session.close()
+    async def close(self):
+        await self.session.close()
         try:
             self.output.close()
             self.bar.close()
