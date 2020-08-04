@@ -123,7 +123,7 @@ class Download:
             # pre-allocate file
             try:
                 os.posix_fallocate(self.output.fileno(), 0, self.size)
-            except OSError:
+            except (OSError, AttributeError):
                 pass
 
         if not self.quiet:
